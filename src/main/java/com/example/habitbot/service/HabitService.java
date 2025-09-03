@@ -40,6 +40,19 @@ public class HabitService {
         throw new IllegalArgumentException("Привычка с id " + id + " не найдена");
     }
 
+    public void deleteHabit(Long id, Long chatId) {
+        Optional<Habit> optionalHabit = habitRepository.findById(id);
+        if (optionalHabit.isPresent()) {
+            Habit habit = optionalHabit.get();
+            if (!habit.getChatId().equals(chatId)) {
+                throw new IllegalArgumentException("Эта привычка не принадлежит вам.");
+            }
+            habitRepository.delete(habit);
+        } else {
+            throw new IllegalArgumentException("Привычка с id " + id + " не найдена");
+        }
+    }
+
     public void resetDailyHabits() {
         List<Habit> habits = habitRepository.findAll();
         habits.forEach(Habit::resetDay);
