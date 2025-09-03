@@ -25,15 +25,14 @@ public class HabitService {
         return habitRepository.findAll();
     }
 
-    public boolean markHabitDone(Long id) {
+    public Habit markHabitDone(Long id) {
         Optional<Habit> optionalHabit = habitRepository.findById(id);
         if (optionalHabit.isPresent()) {
             Habit habit = optionalHabit.get();
             habit.markDone();
-            habitRepository.save(habit);
-            return true;
+            return habitRepository.save(habit); // возвращаем обновлённый объект
         }
-        return false;
+        throw new IllegalArgumentException("Привычка с id " + id + " не найдена");
     }
 
     public void resetDailyHabits() {
