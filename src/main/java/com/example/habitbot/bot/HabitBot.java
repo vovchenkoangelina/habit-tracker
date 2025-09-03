@@ -55,7 +55,7 @@ public class HabitBot extends TelegramLongPollingBot {
         long chatId = message.getChatId();
 
         if (userStates.get(chatId) == UserState.WAITING_FOR_HABIT_NAME) {
-            Habit habit = habitService.addHabit(text);
+            Habit habit = habitService.addHabit(text, chatId);
             sendMessage(chatId, "✅ Привычка добавлена: " + habit.getTitle());
             userStates.remove(chatId);
             return;
@@ -86,7 +86,7 @@ public class HabitBot extends TelegramLongPollingBot {
             default -> {
                 if (data.startsWith("done_")) {
                     Long habitId = Long.parseLong(data.replace("done_", ""));
-                    Habit habit = habitService.markHabitDone(habitId);
+                    Habit habit = habitService.markHabitDone(habitId, chatId);
                     sendMessage(chatId, "✅ Привычка отмечена: " + habit.getTitle() +
                             " (выполнено раз: " + habit.getCompletionCount() + ")");
                 } else {
@@ -97,7 +97,7 @@ public class HabitBot extends TelegramLongPollingBot {
     }
 
     private void sendHabitsList(long chatId) throws TelegramApiException {
-        var habits = habitService.listHabits();
+        var habits = habitService.listHabits(chatId);
         if (habits.isEmpty()) {
             sendMessage(chatId, "Список привычек пуст.");
         } else {
@@ -136,7 +136,7 @@ public class HabitBot extends TelegramLongPollingBot {
     }
 
     private void sendDoneMenu(long chatId) throws TelegramApiException {
-        var habits = habitService.listHabits();
+        var habits = habitService.listHabits(chatId);
         if (habits.isEmpty()) {
             sendMessage(chatId, "Список привычек пуст.");
             return;
