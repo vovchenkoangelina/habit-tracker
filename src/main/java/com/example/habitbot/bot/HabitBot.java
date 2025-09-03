@@ -76,28 +76,43 @@ public class HabitBot extends TelegramLongPollingBot {
         String data = update.getCallbackQuery().getData();
         long chatId = update.getCallbackQuery().getMessage().getChatId();
 
-        switch (data) {
-            case "add" -> {
-                sendMessage(chatId, "✏️ Введите название привычки:");
-                userStates.put(chatId, UserState.WAITING_FOR_HABIT_NAME);
-            }
-            case "list" -> sendHabitsList(chatId);
-            case "done_menu" -> sendDoneMenu(chatId);
-            case "delete_menu" -> sendDeleteMenu(chatId);
-            default -> {
-                if (data.startsWith("done_")) {
-                    Long habitId = Long.parseLong(data.replace("done_", ""));
-                    Habit habit = habitService.markHabitDone(habitId, chatId);
-                    sendMessage(chatId, "✅ Привычка отмечена: " + habit.getTitle() +
-                            " (выполнено раз: " + habit.getCompletionCount() + ")");
-                } else if (data.startsWith("delete_")) {
-                    Long habitId = Long.parseLong(data.replace("delete_", ""));
-                    habitService.deleteHabit(habitId, chatId);
-                    sendMessage(chatId, "❌ Привычка удалена");
-                } else {
-                    sendMessage(chatId, "Неизвестное действие");
-                }
-            }
+        if (data.startsWith("done_")) {
+            Long habitId = Long.parseLong(data.replace("done_", ""));
+            Habit habit = habitService.markHabitDone(habitId, chatId);
+            sendMessage(chatId, "✅ Привычка отмечена: " + habit.getTitle() +
+                    " (выполнено раз: " + habit.getCompletionCount() + ")");
+            sendHabitsList(chatId); // обновляем список после отметки
+        } else if (data.startsWith("confirm_delete_")) {
+            Long habitId = Long.parseLong(data.replace("confirm_delete_", ""));
+            InlineKeyboardButton yesBtn = new InlineKeyboardButton("Да");
+            yesBtn.setCallbackData("delete_" + habitId);
+
+            InlineKeyboardButton noBtn = new InlineKeyboardButton("Отмена");
+            noBtn.setCallbackData("cancel");
+
+            List<List<InlineKeyboardButton>> rows = List.of(List.of(yesBtn, noBtn));
+            InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+            markup.setKeyboard(rows);
+
+            SendMessage message = new SendMessage();
+            message.setChatId(String.valueOf(chatId));
+            message.setText("❗ Вы уверены, что хотите удалить эту привычку?");
+            message.setReplyMarkup(markup);
+
+            execute(message);
+        } else if (data.startsWith("delete_")) {
+            Long habitId = Long.parseLong(data.replace("delete_", ""));
+            habitService.deleteHabit(habitId, chatId);
+            sendMessage(chatId, "❌ Привычка удалена");
+        } else if (data.equals("cancel")) {
+            sendHabitsList(chatId);
+        } else if (data.equals("add")) {
+            sendMessage(chatId, "✏️ Введите название привычки:");
+            userStates.put(chatId, UserState.WAITING_FOR_HABIT_NAME);
+        } else if (data.equals("list")) {
+            sendHabitsList(chatId);
+        } else {
+            sendMessage(chatId, "Неизвестное действие");
         }
     }
 
@@ -105,13 +120,27 @@ public class HabitBot extends TelegramLongPollingBot {
         var habits = habitService.listHabits(chatId);
         if (habits.isEmpty()) {
             sendMessage(chatId, "Список привычек пуст.");
-        } else {
-            StringBuilder sb = new StringBuilder("📋 Ваши привычки:\n");
-            for (Habit h : habits) {
-                sb.append(h.getId()).append(". ").append(h.getTitle())
-                        .append(" (выполнено раз: ").append(h.getCompletionCount()).append(")\n");
-            }
-            sendMessage(chatId, sb.toString());
+            return;
+        }
+
+        for (Habit h : habits) {
+            InlineKeyboardButton doneBtn = new InlineKeyboardButton("✅");
+            doneBtn.setCallbackData("done_" + h.getId());
+
+            InlineKeyboardButton deleteBtn = new InlineKeyboardButton("🗑️");
+            deleteBtn.setCallbackData("confirm_delete_" + h.getId());
+
+            List<List<InlineKeyboardButton>> rows = List.of(List.of(doneBtn, deleteBtn));
+            InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+            markup.setKeyboard(rows);
+
+            SendMessage message = new SendMessage();
+            message.setChatId(String.valueOf(chatId));
+            message.setText(h.getTitle() +
+                    " (выполнено раз: " + h.getCompletionCount() + ")");
+            message.setReplyMarkup(markup);
+
+            execute(message);
         }
     }
 
@@ -122,15 +151,8 @@ public class HabitBot extends TelegramLongPollingBot {
         InlineKeyboardButton listBtn = new InlineKeyboardButton("📋 Список привычек");
         listBtn.setCallbackData("list");
 
-        InlineKeyboardButton doneBtn = new InlineKeyboardButton("✅ Отметить привычку");
-        doneBtn.setCallbackData("done_menu");
-
-        InlineKeyboardButton deleteBtn = new InlineKeyboardButton("🗑️ Удалить привычку");
-        deleteBtn.setCallbackData("delete_menu");
-
         List<List<InlineKeyboardButton>> rows = List.of(
-                List.of(addBtn, listBtn),
-                List.of(doneBtn, deleteBtn)
+                List.of(addBtn, listBtn)
         );
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         markup.setKeyboard(rows);
@@ -138,56 +160,6 @@ public class HabitBot extends TelegramLongPollingBot {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
         message.setText("Выберите действие:");
-        message.setReplyMarkup(markup);
-
-        execute(message);
-    }
-
-    private void sendDoneMenu(long chatId) throws TelegramApiException {
-        var habits = habitService.listHabits(chatId);
-        if (habits.isEmpty()) {
-            sendMessage(chatId, "Список привычек пуст.");
-            return;
-        }
-
-        List<List<InlineKeyboardButton>> rows = new java.util.ArrayList<>();
-        for (Habit h : habits) {
-            InlineKeyboardButton btn = new InlineKeyboardButton(h.getTitle());
-            btn.setCallbackData("done_" + h.getId());
-            rows.add(List.of(btn));
-        }
-
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        markup.setKeyboard(rows);
-
-        SendMessage message = new SendMessage();
-        message.setChatId(String.valueOf(chatId));
-        message.setText("Выберите привычку для отметки:");
-        message.setReplyMarkup(markup);
-
-        execute(message);
-    }
-
-    private void sendDeleteMenu(long chatId) throws TelegramApiException {
-        var habits = habitService.listHabits(chatId);
-        if (habits.isEmpty()) {
-            sendMessage(chatId, "Список привычек пуст.");
-            return;
-        }
-
-        List<List<InlineKeyboardButton>> rows = new java.util.ArrayList<>();
-        for (Habit h : habits) {
-            InlineKeyboardButton btn = new InlineKeyboardButton(h.getTitle());
-            btn.setCallbackData("delete_" + h.getId());
-            rows.add(List.of(btn));
-        }
-
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        markup.setKeyboard(rows);
-
-        SendMessage message = new SendMessage();
-        message.setChatId(String.valueOf(chatId));
-        message.setText("Выберите привычку для удаления:");
         message.setReplyMarkup(markup);
 
         execute(message);
