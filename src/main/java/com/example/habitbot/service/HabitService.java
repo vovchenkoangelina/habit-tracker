@@ -53,6 +53,18 @@ public class HabitService {
         }
     }
 
+    public Habit incrementHabit(String title, Long chatId) {
+        List<Habit> habits = habitRepository.findByChatId(chatId);
+        for (Habit habit : habits) {
+            if (habit.getTitle().equalsIgnoreCase(title)) {
+                habit.setCompletionCount(habit.getCompletionCount() + 1);
+                habit.setDoneToday(true);
+                return habitRepository.save(habit);
+            }
+        }
+        throw new IllegalArgumentException("Привычка с названием \"" + title + "\" не найдена");
+    }
+
     public void resetDailyHabits() {
         List<Habit> habits = habitRepository.findAll();
         habits.forEach(Habit::resetDay);

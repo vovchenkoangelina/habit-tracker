@@ -61,6 +61,17 @@ public class HabitBot extends TelegramLongPollingBot {
             return;
         }
 
+        if (text.endsWith("+1")) {
+            String habitName = text.substring(0, text.length() - 2).trim();
+            try {
+                Habit habit = habitService.incrementHabit(habitName, chatId);
+                sendMessage(chatId, "✅ Привычка \"" + habit.getTitle() + "\" выполнена сегодня. Всего раз выполнено: " + habit.getCompletionCount());
+            } catch (IllegalArgumentException e) {
+                sendMessage(chatId, e.getMessage());
+            }
+            return;
+        }
+
         switch (text) {
             case "/start" -> {
                 sendMessage(chatId, "👋 Привет! Я помогу тебе отслеживать привычки.");
