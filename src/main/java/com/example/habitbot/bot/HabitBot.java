@@ -12,9 +12,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
 public class HabitBot extends TelegramLongPollingBot {
@@ -27,10 +25,21 @@ public class HabitBot extends TelegramLongPollingBot {
     @Value("${telegram.bot.username}")
     private String botUsername;
 
+    private final Map<Long, TempHabitData> tempHabitData = new HashMap<>();
+
+    private static class TempHabitData {
+        String title;
+        boolean remindersEnabled;
+        String reminderTime;
+        boolean waitingForTimeInput;
+    }
+
     private final Map<Long, UserState> userStates = new HashMap<>();
 
     private enum UserState {
-        WAITING_FOR_HABIT_NAME
+        WAITING_FOR_HABIT_NAME,
+        WAITING_FOR_REMINDER_CHOICE,
+        WAITING_FOR_REMINDER_TIME
     }
 
     public HabitBot(HabitService habitService) {
@@ -54,10 +63,35 @@ public class HabitBot extends TelegramLongPollingBot {
         String text = message.getText();
         long chatId = message.getChatId();
 
-        if (userStates.get(chatId) == UserState.WAITING_FOR_HABIT_NAME) {
-            Habit habit = habitService.addHabit(text, chatId);
-            sendMessage(chatId, "✅ Привычка добавлена: " + habit.getTitle());
-            userStates.remove(chatId);
+        UserState state = userStates.get(chatId);
+        TempHabitData temp = tempHabitData.get(chatId);
+
+        if (state == UserState.WAITING_FOR_REMINDER_TIME && temp != null && temp.waitingForTimeInput) {
+            if (text.matches("\\d{2}:\\d{2}")) {
+                temp.reminderTime = text;
+                Habit habit = habitService.addHabit(temp.title, chatId, true, temp.reminderTime);
+                sendMessage(chatId, "✅ Привычка добавлена с напоминанием на " + temp.reminderTime + ": " + habit.getTitle());
+                tempHabitData.remove(chatId);
+                userStates.remove(chatId);
+            } else {
+                sendMessage(chatId, "⛔ Неверный формат времени. Используйте HH:mm (например, 09:30).");
+            }
+            return;
+        }
+
+        if (state == UserState.WAITING_FOR_HABIT_NAME) {
+            temp = new TempHabitData();
+            temp.title = text;
+            tempHabitData.put(chatId, temp);
+
+            InlineKeyboardButton yesBtn = new InlineKeyboardButton("Да");
+            yesBtn.setCallbackData("reminder_yes");
+            InlineKeyboardButton noBtn = new InlineKeyboardButton("Нет");
+            noBtn.setCallbackData("reminder_no");
+
+            sendInlineKeyboard(chatId, "💡 Присылать напоминания для этой привычки?", List.of(List.of(yesBtn, noBtn)));
+
+            userStates.put(chatId, UserState.WAITING_FOR_REMINDER_CHOICE);
             return;
         }
 
@@ -86,41 +120,67 @@ public class HabitBot extends TelegramLongPollingBot {
     private void handleCallback(Update update) throws TelegramApiException {
         String data = update.getCallbackQuery().getData();
         long chatId = update.getCallbackQuery().getMessage().getChatId();
+        UserState state = userStates.get(chatId);
+        TempHabitData temp = tempHabitData.get(chatId);
+
+        if (state == UserState.WAITING_FOR_REMINDER_CHOICE && temp != null) {
+            if ("reminder_yes".equals(data)) {
+                temp.remindersEnabled = true;
+
+                InlineKeyboardButton specificBtn = new InlineKeyboardButton("Выбрать время");
+                specificBtn.setCallbackData("reminder_time");
+                InlineKeyboardButton randomBtn = new InlineKeyboardButton("Случайное время");
+                randomBtn.setCallbackData("reminder_random");
+
+                sendInlineKeyboard(chatId, "⏰ Выберите время напоминания:", List.of(List.of(specificBtn, randomBtn)));
+                userStates.put(chatId, UserState.WAITING_FOR_REMINDER_TIME);
+            } else if ("reminder_no".equals(data)) {
+                temp.remindersEnabled = false;
+                Habit habit = habitService.addHabit(temp.title, chatId, false, null);
+                sendMessage(chatId, "✅ Привычка добавлена: " + habit.getTitle());
+                tempHabitData.remove(chatId);
+                userStates.remove(chatId);
+            }
+            return;
+        }
+
+        if (state == UserState.WAITING_FOR_REMINDER_TIME && temp != null) {
+            if ("reminder_random".equals(data)) {
+                Habit habit = habitService.addHabit(temp.title, chatId, true, "random");
+                sendMessage(chatId, "✅ Привычка добавлена с напоминаниями в случайное время: " + habit.getTitle());
+                tempHabitData.remove(chatId);
+                userStates.remove(chatId);
+            } else if ("reminder_time".equals(data)) {
+                sendMessage(chatId, "Введите время в формате HH:mm, например 10:30");
+                temp.waitingForTimeInput = true;
+            }
+            return;
+        }
 
         if (data.startsWith("done_")) {
             Long habitId = Long.parseLong(data.replace("done_", ""));
             Habit habit = habitService.markHabitDone(habitId, chatId);
             sendMessage(chatId, "✅ Привычка отмечена: " + habit.getTitle() +
                     " (выполнено раз: " + habit.getCompletionCount() + ")");
-            sendHabitsList(chatId); // обновляем список после отметки
+            sendHabitsList(chatId);
         } else if (data.startsWith("confirm_delete_")) {
             Long habitId = Long.parseLong(data.replace("confirm_delete_", ""));
             InlineKeyboardButton yesBtn = new InlineKeyboardButton("Да");
             yesBtn.setCallbackData("delete_" + habitId);
-
             InlineKeyboardButton noBtn = new InlineKeyboardButton("Отмена");
             noBtn.setCallbackData("cancel");
-
-            List<List<InlineKeyboardButton>> rows = List.of(List.of(yesBtn, noBtn));
-            InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-            markup.setKeyboard(rows);
-
-            SendMessage message = new SendMessage();
-            message.setChatId(String.valueOf(chatId));
-            message.setText("❗ Вы уверены, что хотите удалить эту привычку?");
-            message.setReplyMarkup(markup);
-
-            execute(message);
+            sendInlineKeyboard(chatId, "❗ Вы уверены, что хотите удалить эту привычку?", List.of(List.of(yesBtn, noBtn)));
         } else if (data.startsWith("delete_")) {
             Long habitId = Long.parseLong(data.replace("delete_", ""));
             habitService.deleteHabit(habitId, chatId);
             sendMessage(chatId, "❌ Привычка удалена");
-        } else if (data.equals("cancel")) {
             sendHabitsList(chatId);
-        } else if (data.equals("add")) {
+        } else if ("cancel".equals(data)) {
+            sendHabitsList(chatId);
+        } else if ("add".equals(data)) {
             sendMessage(chatId, "✏️ Введите название привычки:");
             userStates.put(chatId, UserState.WAITING_FOR_HABIT_NAME);
-        } else if (data.equals("list")) {
+        } else if ("list".equals(data)) {
             sendHabitsList(chatId);
         } else {
             sendMessage(chatId, "Неизвестное действие");
@@ -158,19 +218,19 @@ public class HabitBot extends TelegramLongPollingBot {
     private void sendMenu(long chatId) throws TelegramApiException {
         InlineKeyboardButton addBtn = new InlineKeyboardButton("➕ Добавить привычку");
         addBtn.setCallbackData("add");
-
         InlineKeyboardButton listBtn = new InlineKeyboardButton("📋 Список привычек");
         listBtn.setCallbackData("list");
 
-        List<List<InlineKeyboardButton>> rows = List.of(
-                List.of(addBtn, listBtn)
-        );
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        markup.setKeyboard(rows);
+        sendInlineKeyboard(chatId, "Выберите действие:", List.of(List.of(addBtn, listBtn)));
+    }
 
+    private void sendInlineKeyboard(long chatId, String text, List<List<InlineKeyboardButton>> buttons) throws TelegramApiException {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
-        message.setText("Выберите действие:");
+        message.setText(text);
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        markup.setKeyboard(buttons);
         message.setReplyMarkup(markup);
 
         execute(message);
@@ -183,6 +243,14 @@ public class HabitBot extends TelegramLongPollingBot {
         execute(message);
     }
 
+    public void sendReminder(Long chatId, String habitTitle) {
+        try {
+            sendMessage(chatId, "⏰ Напоминание: не забудьте выполнить привычку '" + habitTitle + "'");
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public String getBotUsername() {
         return botUsername;
@@ -193,4 +261,5 @@ public class HabitBot extends TelegramLongPollingBot {
         return botToken;
     }
 }
+
 

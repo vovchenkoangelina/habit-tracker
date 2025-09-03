@@ -18,6 +18,10 @@ public class Habit {
 
     private Long chatId;
 
+    private boolean remindersEnabled;
+    private String reminderTime;
+    private String reminderTimeActual;
+
     public Habit() {
         this.startDate = LocalDateTime.now();
         this.isDoneToday = false;
@@ -82,6 +86,30 @@ public class Habit {
 
     public void setChatId(Long chatId) {
         this.chatId = chatId;
+    }
+
+    public boolean isRemindersEnabled() {
+        return remindersEnabled;
+    }
+
+    public void setRemindersEnabled(boolean remindersEnabled) {
+        this.remindersEnabled = remindersEnabled;
+    }
+
+    public String getReminderTime() {
+        return reminderTime;
+    }
+
+    public void setReminderTime(String reminderTime) {
+        this.reminderTime = reminderTime;
+    }
+
+    public String getReminderTimeActual() {
+        return reminderTimeActual;
+    }
+
+    public void setReminderTimeActual(String reminderTimeActual) {
+        this.reminderTimeActual = reminderTimeActual;
     }
 }
 

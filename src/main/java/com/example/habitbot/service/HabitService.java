@@ -4,6 +4,8 @@ import com.example.habitbot.model.Habit;
 import com.example.habitbot.repository.HabitRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,10 +18,24 @@ public class HabitService {
         this.habitRepository = habitRepository;
     }
 
-    public Habit addHabit(String title, Long chatId) {
+    public Habit addHabit(String title, Long chatId, boolean remindersEnabled, String reminderTime) {
         Habit habit = new Habit();
         habit.setTitle(title);
         habit.setChatId(chatId);
+        habit.setRemindersEnabled(remindersEnabled);
+        if ("random".equals(reminderTime)) {
+            habit.setReminderTime("random");
+            LocalTime start = LocalTime.of(9, 0);
+            LocalTime end = LocalTime.of(23, 0);
+            int min = start.toSecondOfDay();
+            int max = end.toSecondOfDay();
+            int randomSec = min + (int) (Math.random() * (max - min));
+            LocalTime randomTime = LocalTime.ofSecondOfDay(randomSec);
+            habit.setReminderTimeActual(randomTime.format(DateTimeFormatter.ofPattern("HH:mm")));
+        } else {
+            habit.setReminderTime(reminderTime);
+            habit.setReminderTimeActual(reminderTime);
+        }
         return habitRepository.save(habit);
     }
 
@@ -57,18 +73,38 @@ public class HabitService {
         List<Habit> habits = habitRepository.findByChatId(chatId);
         for (Habit habit : habits) {
             if (habit.getTitle().equalsIgnoreCase(title)) {
-                habit.setCompletionCount(habit.getCompletionCount() + 1);
-                habit.setDoneToday(true);
+                habit.markDone();
                 return habitRepository.save(habit);
             }
         }
         throw new IllegalArgumentException("Привычка с названием \"" + title + "\" не найдена");
     }
 
+    public void generateRandomReminderTimes() {
+        List<Habit> habits = findAllWithRemindersEnabled();
+        LocalTime start = LocalTime.of(9, 0);
+        LocalTime end = LocalTime.of(23, 0);
+
+        for (Habit habit : habits) {
+            if ("random".equals(habit.getReminderTime())) {
+                int min = start.toSecondOfDay();
+                int max = end.toSecondOfDay();
+                int randomSec = min + (int) (Math.random() * (max - min));
+                LocalTime randomTime = LocalTime.ofSecondOfDay(randomSec);
+                habit.setReminderTimeActual(randomTime.format(DateTimeFormatter.ofPattern("HH:mm")));
+                habitRepository.save(habit);
+            }
+        }
+    }
+
     public void resetDailyHabits() {
         List<Habit> habits = habitRepository.findAll();
         habits.forEach(Habit::resetDay);
         habitRepository.saveAll(habits);
+    }
+
+    public List<Habit> findAllWithRemindersEnabled() {
+        return habitRepository.findByRemindersEnabledTrue();
     }
 }
 
