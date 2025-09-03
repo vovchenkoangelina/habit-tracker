@@ -1,6 +1,8 @@
 package com.example.habitbot.model;
 
 import jakarta.persistence.*;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -22,6 +24,10 @@ public class Habit {
     private String reminderTime;
     private String reminderTimeActual;
 
+    private int currentStreak;
+    private int maxStreak;
+    private LocalDate lastCompletionDate;
+
     public Habit() {
         this.startDate = LocalDateTime.now();
         this.isDoneToday = false;
@@ -30,7 +36,17 @@ public class Habit {
 
 
     public void markDone() {
+        LocalDate today = LocalDate.now();
         if (!isDoneToday) {
+            if (lastCompletionDate != null && lastCompletionDate.equals(today.minusDays(1))) {
+                currentStreak++;
+            } else {
+                currentStreak = 1;
+            }
+            if (currentStreak > maxStreak) {
+                maxStreak = currentStreak;
+            }
+            lastCompletionDate = today;
             isDoneToday = true;
             completionCount++;
         }
@@ -110,6 +126,30 @@ public class Habit {
 
     public void setReminderTimeActual(String reminderTimeActual) {
         this.reminderTimeActual = reminderTimeActual;
+    }
+
+    public int getCurrentStreak() {
+        return currentStreak;
+    }
+
+    public void setCurrentStreak(int currentStreak) {
+        this.currentStreak = currentStreak;
+    }
+
+    public int getMaxStreak() {
+        return maxStreak;
+    }
+
+    public void setMaxStreak(int maxStreak) {
+        this.maxStreak = maxStreak;
+    }
+
+    public LocalDate getLastCompletionDate() {
+        return lastCompletionDate;
+    }
+
+    public void setLastCompletionDate(LocalDate lastCompletionDate) {
+        this.lastCompletionDate = lastCompletionDate;
     }
 }
 

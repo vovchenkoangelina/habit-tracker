@@ -182,6 +182,13 @@ public class HabitBot extends TelegramLongPollingBot {
             userStates.put(chatId, UserState.WAITING_FOR_HABIT_NAME);
         } else if ("list".equals(data)) {
             sendHabitsList(chatId);
+        } else if (data.startsWith("stats_")) {
+            Long habitId = Long.parseLong(data.replace("stats_", ""));
+            Habit habit = habitService.getHabitByIdAndChatId(habitId, chatId);
+            sendMessage(chatId, "📊 Статистика по привычке \"" + habit.getTitle() + "\":\n" +
+                    "Всего выполнено: " + habit.getCompletionCount() + "\n" +
+                    "Текущий стрик: " + habit.getCurrentStreak() + "\n" +
+                    "Максимальный стрик: " + habit.getMaxStreak());
         } else {
             sendMessage(chatId, "Неизвестное действие");
         }
@@ -201,7 +208,13 @@ public class HabitBot extends TelegramLongPollingBot {
             InlineKeyboardButton deleteBtn = new InlineKeyboardButton("🗑️");
             deleteBtn.setCallbackData("confirm_delete_" + h.getId());
 
-            List<List<InlineKeyboardButton>> rows = List.of(List.of(doneBtn, deleteBtn));
+            InlineKeyboardButton statsBtn = new InlineKeyboardButton("📊");
+            statsBtn.setCallbackData("stats_" + h.getId());
+
+            List<List<InlineKeyboardButton>> rows = List.of(
+                    List.of(doneBtn, deleteBtn, statsBtn)
+            );
+
             InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
             markup.setKeyboard(rows);
 
@@ -214,6 +227,7 @@ public class HabitBot extends TelegramLongPollingBot {
             execute(message);
         }
     }
+
 
     private void sendMenu(long chatId) throws TelegramApiException {
         InlineKeyboardButton addBtn = new InlineKeyboardButton("➕ Добавить привычку");

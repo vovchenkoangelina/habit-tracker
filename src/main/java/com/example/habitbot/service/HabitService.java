@@ -106,5 +106,18 @@ public class HabitService {
     public List<Habit> findAllWithRemindersEnabled() {
         return habitRepository.findByRemindersEnabledTrue();
     }
+
+    public Habit getHabitByIdAndChatId(Long habitId, Long chatId) {
+        Optional<Habit> optionalHabit = habitRepository.findById(habitId);
+        if (optionalHabit.isPresent()) {
+            Habit habit = optionalHabit.get();
+            if (!habit.getChatId().equals(chatId)) {
+                throw new IllegalArgumentException("Эта привычка не принадлежит вам.");
+            }
+            return habit;
+        } else {
+            throw new IllegalArgumentException("Привычка с id " + habitId + " не найдена");
+        }
+    }
 }
 
