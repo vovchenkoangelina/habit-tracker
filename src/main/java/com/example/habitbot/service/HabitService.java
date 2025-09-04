@@ -69,17 +69,6 @@ public class HabitService {
         }
     }
 
-    public Habit incrementHabit(String title, Long chatId) {
-        List<Habit> habits = habitRepository.findByChatId(chatId);
-        for (Habit habit : habits) {
-            if (habit.getTitle().equalsIgnoreCase(title)) {
-                habit.markDone();
-                return habitRepository.save(habit);
-            }
-        }
-        throw new IllegalArgumentException("Привычка с названием \"" + title + "\" не найдена");
-    }
-
     public void generateRandomReminderTimes() {
         List<Habit> habits = findAllWithRemindersEnabled();
         LocalTime start = LocalTime.of(9, 0);
@@ -97,6 +86,36 @@ public class HabitService {
         }
     }
 
+    public Habit toggleReminder(Long habitId, Long chatId) {
+        Habit habit = getHabitByIdAndChatId(habitId, chatId);
+        habit.setRemindersEnabled(!habit.isRemindersEnabled());
+        return habitRepository.save(habit);
+    }
+
+    public Habit updateReminderTime(Long habitId, Long chatId, String time) {
+        Habit habit = getHabitByIdAndChatId(habitId, chatId);
+        habit.setRemindersEnabled(true);
+
+        if ("random".equals(time)) {
+            habit.setReminderTime("random");
+
+            LocalTime start = LocalTime.of(9, 0);
+            LocalTime end = LocalTime.of(23, 0);
+            int min = start.toSecondOfDay();
+            int max = end.toSecondOfDay();
+            int randomSec = min + (int) (Math.random() * (max - min));
+            LocalTime randomTime = LocalTime.ofSecondOfDay(randomSec);
+
+            habit.setReminderTimeActual(randomTime.format(DateTimeFormatter.ofPattern("HH:mm")));
+        } else {
+            habit.setReminderTime(time);
+            habit.setReminderTimeActual(time);
+        }
+
+        return habitRepository.save(habit);
+    }
+
+
     public void resetDailyHabits() {
         List<Habit> habits = habitRepository.findAll();
         habits.forEach(Habit::resetDay);
@@ -105,6 +124,10 @@ public class HabitService {
 
     public List<Habit> findAllWithRemindersEnabled() {
         return habitRepository.findByRemindersEnabledTrue();
+    }
+
+    public Optional<Habit> findById(Long habitId) {
+        return habitRepository.findById(habitId);
     }
 
     public Habit getHabitByIdAndChatId(Long habitId, Long chatId) {
